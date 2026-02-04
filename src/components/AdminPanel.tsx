@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, UserPlus, Users, Shield, Loader2, AlertCircle } from 'lucide-react';
+import { X, UserPlus, Shield, Loader2, AlertCircle } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { supabase } from '../supabase';
 import type { User } from '../types';
@@ -22,7 +22,7 @@ const adminClient = createClient(supabaseUrl, supabaseAnonKey, {
   }
 });
 
-export const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose, currentUser }) => {
+export const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');

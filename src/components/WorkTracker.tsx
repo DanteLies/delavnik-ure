@@ -94,7 +94,7 @@ export const WorkTracker: React.FC<WorkTrackerProps> = ({ entries, onUpdateEntri
           updated_at: new Date().toISOString()
         };
 
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from('entries')
           .upsert(entry?.id ? { ...entryData, id: entry.id } : entryData)
           .select();

@@ -105,7 +105,7 @@ function App() {
     }
   };
 
-  const handleLogin = (user: User) => {
+  const handleLogin = (_user: User) => {
     // This is now handled by onAuthStateChange
   };
 

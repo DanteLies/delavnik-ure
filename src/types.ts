@@ -18,8 +18,6 @@ export interface User {
   username: string;
   hourly_rate?: number;
   is_admin?: boolean;
-}Optional for users created locally without password initially? No, let's require it.
-  isAdmin?: boolean;
 }
 
 export interface WorkData {
