@@ -4,8 +4,9 @@ import { WorkTracker } from './components/WorkTracker';
 import { MonthlySummary } from './components/MonthlySummary';
 import { Settings } from './components/Settings';
 import { AdminPanel } from './components/AdminPanel';
+import { Statistics } from './components/Statistics';
 import type { DailyEntry, User } from './types';
-import { Clock, LogOut, Sun, Moon, Settings as SettingsIcon, Loader2, Shield } from 'lucide-react';
+import { Clock, LogOut, Sun, Moon, Settings as SettingsIcon, Loader2, Shield, BarChart3 } from 'lucide-react';
 import { supabase } from './supabase';
 
 function App() {
@@ -14,6 +15,7 @@ function App() {
   const [isDark, setIsDark] = useState(false);
   const [hourlyRate, setHourlyRate] = useState(9);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isStatisticsOpen, setIsStatisticsOpen] = useState(false);
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -184,6 +186,14 @@ function App() {
             )}
 
             <button
+              onClick={() => setIsStatisticsOpen(true)}
+              className="p-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
+              title="Statistika"
+            >
+              <BarChart3 className="w-5 h-5" />
+            </button>
+
+            <button
               onClick={() => setIsSettingsOpen(true)}
               className="p-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
               title="Nastavitve"
@@ -228,9 +238,16 @@ function App() {
         onUpdateEntries={handleUpdateEntries}
         username={currentUser.username}
         userId={currentUser.id}
-      />
-      
-      <AdminPanel
+              />
+
+              <Statistics
+                isOpen={isStatisticsOpen}
+                onClose={() => setIsStatisticsOpen(false)}
+                entries={entries}
+                hourlyRate={hourlyRate}
+              />
+
+              <AdminPanel
         isOpen={isAdminPanelOpen}
         onClose={() => setIsAdminPanelOpen(false)}
         currentUser={currentUser}
