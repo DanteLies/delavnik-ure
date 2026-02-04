@@ -3,25 +3,27 @@ import { Download, Calculator } from 'lucide-react';
 import { format, endOfMonth, eachDayOfInterval, parse } from 'date-fns';
 import { sl } from 'date-fns/locale';
 import type { DailyEntry } from '../types';
-import { calculateDailyHours, HOURLY_RATE, formatCurrency, formatHours } from '../utils';
+import { calculateDailyHours, formatCurrency, formatHours } from '../utils';
 
 interface MonthlySummaryProps {
   entries: DailyEntry[];
+  hourlyRate: number;
 }
 
-export const MonthlySummary: React.FC<MonthlySummaryProps> = ({ entries }) => {
+export const MonthlySummary: React.FC<MonthlySummaryProps> = ({ entries, hourlyRate }) => {
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
 
   const handleExport = () => {
     const monthEntries = getMonthData();
     const csvContent = [
-      ['Datum', 'Ure', 'Znesek'],
+      ['Datum', 'Ure', 'Opomba', 'Znesek'],
       ...monthEntries.map(d => [
         format(d.date, 'd. M. yyyy'),
         formatHours(d.hours).replace('.', ','),
-        formatCurrency(d.hours * HOURLY_RATE).replace('€', '').trim().replace('.', ',')
+        d.comment || '',
+        formatCurrency(d.hours * hourlyRate).replace('€', '').trim().replace('.', ',')
       ]),
-      ['Skupaj', formatHours(totalHours).replace('.', ','), formatCurrency(totalSalary).replace('€', '').trim().replace('.', ',')]
+      ['Skupaj', formatHours(totalHours).replace('.', ','), '', formatCurrency(totalSalary).replace('€', '').trim().replace('.', ',')]
     ]
     .map(e => e.join(';'))
     .join('\n');
@@ -49,14 +51,15 @@ export const MonthlySummary: React.FC<MonthlySummaryProps> = ({ entries }) => {
       return {
         date: day,
         hours,
-        salary: hours * HOURLY_RATE
+        comment: entry?.comment,
+        salary: hours * hourlyRate
       };
     });
   };
 
   const monthData = getMonthData();
   const totalHours = monthData.reduce((acc, curr) => acc + curr.hours, 0);
-  const totalSalary = totalHours * HOURLY_RATE;
+  const totalSalary = totalHours * hourlyRate;
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl p-6 transition-colors duration-300">
@@ -90,7 +93,7 @@ export const MonthlySummary: React.FC<MonthlySummaryProps> = ({ entries }) => {
         </div>
         <div className="bg-green-50 dark:bg-green-900/20 p-5 rounded-2xl border border-green-100 dark:border-green-800">
           <p className="text-sm text-green-600 dark:text-green-400 font-medium uppercase tracking-wider">Urna postavka</p>
-          <p className="text-3xl font-bold text-green-900 dark:text-green-100 mt-1">{formatCurrency(HOURLY_RATE)}/h</p>
+          <p className="text-3xl font-bold text-green-900 dark:text-green-100 mt-1">{formatCurrency(hourlyRate)}/h</p>
         </div>
         <div className="bg-purple-50 dark:bg-purple-900/20 p-5 rounded-2xl border border-purple-100 dark:border-purple-800">
           <p className="text-sm text-purple-600 dark:text-purple-400 font-medium uppercase tracking-wider">Skupaj plača</p>

@@ -2,13 +2,16 @@ import { useState, useEffect } from 'react';
 import { Login } from './components/Login';
 import { WorkTracker } from './components/WorkTracker';
 import { MonthlySummary } from './components/MonthlySummary';
+import { Settings } from './components/Settings';
 import type { DailyEntry, User } from './types';
-import { Clock, LogOut, Sun, Moon } from 'lucide-react';
+import { Clock, LogOut, Sun, Moon, Settings as SettingsIcon } from 'lucide-react';
 
 function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [entries, setEntries] = useState<DailyEntry[]>([]);
   const [isDark, setIsDark] = useState(false);
+  const [hourlyRate, setHourlyRate] = useState(9);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Load auth state and theme on mount
   useEffect(() => {
@@ -29,6 +32,7 @@ function App() {
         const user = JSON.parse(savedUser);
         setCurrentUser(user);
         loadUserEntries(user.username);
+        loadUserPreferences(user.username);
       } catch (e) {
         console.error('Failed to parse user', e);
       }
@@ -60,15 +64,29 @@ function App() {
     }
   };
 
+  const loadUserPreferences = (username: string) => {
+    const savedRate = localStorage.getItem(`hourlyRate_${username}`);
+    if (savedRate) {
+      const rate = parseFloat(savedRate);
+      if (!isNaN(rate)) {
+        setHourlyRate(rate);
+      }
+    } else {
+      setHourlyRate(9); // Default
+    }
+  };
+
   const handleLogin = (user: User) => {
     setCurrentUser(user);
     localStorage.setItem('currentUser', JSON.stringify(user));
     loadUserEntries(user.username);
+    loadUserPreferences(user.username);
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
     setEntries([]);
+    setHourlyRate(9);
     localStorage.removeItem('currentUser');
   };
 
@@ -76,6 +94,13 @@ function App() {
     setEntries(newEntries);
     if (currentUser) {
       localStorage.setItem(`workEntries_${currentUser.username}`, JSON.stringify(newEntries));
+    }
+  };
+
+  const handleHourlyRateChange = (rate: number) => {
+    setHourlyRate(rate);
+    if (currentUser) {
+      localStorage.setItem(`hourlyRate_${currentUser.username}`, rate.toString());
     }
   };
 
@@ -100,6 +125,14 @@ function App() {
           </div>
           
           <div className="flex items-center gap-2 sm:gap-4">
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="p-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
+              title="Nastavitve"
+            >
+              <SettingsIcon className="w-5 h-5" />
+            </button>
+
             <button 
               onClick={toggleTheme}
               className="p-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
@@ -121,9 +154,18 @@ function App() {
 
       <main className="max-w-4xl mx-auto px-4 py-8 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
         <WorkTracker entries={entries} onUpdateEntries={handleUpdateEntries} />
-        <MonthlySummary entries={entries} />
-        
+        <MonthlySummary entries={entries} hourlyRate={hourlyRate} />
       </main>
+
+      <Settings 
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        hourlyRate={hourlyRate}
+        setHourlyRate={handleHourlyRateChange}
+        entries={entries}
+        onUpdateEntries={handleUpdateEntries}
+        username={currentUser.username}
+      />
     </div>
   );
 }

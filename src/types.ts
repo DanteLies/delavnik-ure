@@ -7,6 +7,7 @@ export interface Shift {
 export interface DailyEntry {
   date: string; // YYYY-MM-DD
   shifts: Shift[];
+  comment?: string;
 }
 
 export interface User {

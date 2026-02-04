@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Calendar as CalendarIcon, Clock, X } from 'lucide-react';
+import { Plus, Trash2, Calendar as CalendarIcon, Clock, X, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
 import { sl } from 'date-fns/locale';
 import type { DailyEntry, Shift } from '../types';
@@ -14,16 +14,18 @@ interface WorkTrackerProps {
 export const WorkTracker: React.FC<WorkTrackerProps> = ({ entries, onUpdateEntries }) => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [currentShifts, setCurrentShifts] = useState<Shift[]>([]);
+  const [comment, setComment] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
 
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
 
-  // Load shifts for selected date
+  // Load shifts and comment for selected date
   useEffect(() => {
     const entry = entries.find(e => e.date === selectedDateStr);
     setCurrentShifts(entry ? entry.shifts : []);
+    setComment(entry?.comment || '');
   }, [selectedDateStr, entries]);
 
   const handleAddShift = (e: React.FormEvent) => {
@@ -38,7 +40,7 @@ export const WorkTracker: React.FC<WorkTrackerProps> = ({ entries, onUpdateEntri
 
     const updatedShifts = [...currentShifts, newShift];
     setCurrentShifts(updatedShifts);
-    saveEntry(updatedShifts);
+    saveEntry(updatedShifts, comment);
     
     // Reset inputs
     setStartTime('');
@@ -49,21 +51,37 @@ export const WorkTracker: React.FC<WorkTrackerProps> = ({ entries, onUpdateEntri
   const handleRemoveShift = (id: string) => {
     const updatedShifts = currentShifts.filter(s => s.id !== id);
     setCurrentShifts(updatedShifts);
-    saveEntry(updatedShifts);
+    saveEntry(updatedShifts, comment);
   };
 
-  const saveEntry = (shifts: Shift[]) => {
+  const handleCommentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setComment(e.target.value);
+  };
+
+  const handleCommentBlur = () => {
+    saveEntry(currentShifts, comment);
+  };
+
+  const saveEntry = (shifts: Shift[], entryComment: string) => {
     const newEntries = [...entries];
     const existingIndex = newEntries.findIndex(e => e.date === selectedDateStr);
 
     if (existingIndex >= 0) {
-      if (shifts.length === 0) {
+      if (shifts.length === 0 && !entryComment) {
         newEntries.splice(existingIndex, 1);
       } else {
-        newEntries[existingIndex] = { date: selectedDateStr, shifts };
+        newEntries[existingIndex] = { 
+          date: selectedDateStr, 
+          shifts,
+          comment: entryComment
+        };
       }
-    } else if (shifts.length > 0) {
-      newEntries.push({ date: selectedDateStr, shifts });
+    } else if (shifts.length > 0 || entryComment) {
+      newEntries.push({ 
+        date: selectedDateStr, 
+        shifts,
+        comment: entryComment
+      });
     }
 
     onUpdateEntries(newEntries);
@@ -78,7 +96,6 @@ export const WorkTracker: React.FC<WorkTrackerProps> = ({ entries, onUpdateEntri
         onDateChange={setSelectedDate}
         onSelectDate={(date) => {
           setSelectedDate(date);
-          // Optional: Scroll to details or open modal if needed
         }}
         entries={entries}
       />
@@ -100,6 +117,22 @@ export const WorkTracker: React.FC<WorkTrackerProps> = ({ entries, onUpdateEntri
           >
             <Plus className="w-6 h-6" />
           </button>
+        </div>
+
+        {/* Comment Section */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
+            <MessageSquare className="w-4 h-4" />
+            Opombe / Komentar
+          </label>
+          <textarea
+            value={comment}
+            onChange={handleCommentChange}
+            onBlur={handleCommentBlur}
+            placeholder="Dodaj opombo za ta dan..."
+            rows={2}
+            className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700/50 border border-gray-100 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-gray-700 dark:text-gray-200 resize-none transition-all"
+          />
         </div>
 
         {currentShifts.length === 0 ? (
