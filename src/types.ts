@@ -5,14 +5,20 @@ export interface Shift {
 }
 
 export interface DailyEntry {
+  id?: string; // UUID from DB
   date: string; // YYYY-MM-DD
   shifts: Shift[];
   comment?: string;
+  user_id?: string;
 }
 
 export interface User {
+  id: string;
+  email?: string;
   username: string;
-  password?: string; // Optional for users created locally without password initially? No, let's require it.
+  hourly_rate?: number;
+  is_admin?: boolean;
+}Optional for users created locally without password initially? No, let's require it.
   isAdmin?: boolean;
 }
 

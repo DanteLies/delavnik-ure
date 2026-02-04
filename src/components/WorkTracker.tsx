@@ -2,22 +2,25 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Calendar as CalendarIcon, Clock, X, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
 import { sl } from 'date-fns/locale';
-import type { DailyEntry, Shift } from '../types';
+import type { DailyEntry, Shift, User } from '../types';
 import { calculateDailyHours, calculateShiftHours, formatHours } from '../utils';
 import { CalendarView } from './CalendarView';
+import { supabase } from '../supabase';
 
 interface WorkTrackerProps {
   entries: DailyEntry[];
   onUpdateEntries: (entries: DailyEntry[]) => void;
+  currentUser: User;
 }
 
-export const WorkTracker: React.FC<WorkTrackerProps> = ({ entries, onUpdateEntries }) => {
+export const WorkTracker: React.FC<WorkTrackerProps> = ({ entries, onUpdateEntries, currentUser }) => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [currentShifts, setCurrentShifts] = useState<Shift[]>([]);
   const [comment, setComment] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
 
@@ -28,7 +31,7 @@ export const WorkTracker: React.FC<WorkTrackerProps> = ({ entries, onUpdateEntri
     setComment(entry?.comment || '');
   }, [selectedDateStr, entries]);
 
-  const handleAddShift = (e: React.FormEvent) => {
+  const handleAddShift = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!startTime || !endTime) return;
 
@@ -40,7 +43,8 @@ export const WorkTracker: React.FC<WorkTrackerProps> = ({ entries, onUpdateEntri
 
     const updatedShifts = [...currentShifts, newShift];
     setCurrentShifts(updatedShifts);
-    saveEntry(updatedShifts, comment);
+    
+    await saveEntry(updatedShifts, comment);
     
     // Reset inputs
     setStartTime('');
@@ -48,43 +52,64 @@ export const WorkTracker: React.FC<WorkTrackerProps> = ({ entries, onUpdateEntri
     setShowAddModal(false);
   };
 
-  const handleRemoveShift = (id: string) => {
+  const handleRemoveShift = async (id: string) => {
     const updatedShifts = currentShifts.filter(s => s.id !== id);
     setCurrentShifts(updatedShifts);
-    saveEntry(updatedShifts, comment);
+    await saveEntry(updatedShifts, comment);
   };
 
   const handleCommentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setComment(e.target.value);
   };
 
-  const handleCommentBlur = () => {
-    saveEntry(currentShifts, comment);
+  const handleCommentBlur = async () => {
+    // Only save if changed
+    const entry = entries.find(e => e.date === selectedDateStr);
+    if (entry?.comment !== comment) {
+      await saveEntry(currentShifts, comment);
+    }
   };
 
-  const saveEntry = (shifts: Shift[], entryComment: string) => {
-    const newEntries = [...entries];
-    const existingIndex = newEntries.findIndex(e => e.date === selectedDateStr);
-
-    if (existingIndex >= 0) {
+  const saveEntry = async (shifts: Shift[], entryComment: string) => {
+    setIsSaving(true);
+    try {
+      const entry = entries.find(e => e.date === selectedDateStr);
+      
       if (shifts.length === 0 && !entryComment) {
-        newEntries.splice(existingIndex, 1);
+        // Delete if empty
+        if (entry?.id) {
+          const { error } = await supabase
+            .from('entries')
+            .delete()
+            .eq('id', entry.id);
+          if (error) throw error;
+        }
       } else {
-        newEntries[existingIndex] = { 
-          date: selectedDateStr, 
-          shifts,
-          comment: entryComment
+        // Upsert
+        const entryData = {
+          user_id: currentUser.id,
+          date: selectedDateStr,
+          shifts: shifts,
+          comment: entryComment,
+          updated_at: new Date().toISOString()
         };
-      }
-    } else if (shifts.length > 0 || entryComment) {
-      newEntries.push({ 
-        date: selectedDateStr, 
-        shifts,
-        comment: entryComment
-      });
-    }
 
-    onUpdateEntries(newEntries);
+        const { data, error } = await supabase
+          .from('entries')
+          .upsert(entry?.id ? { ...entryData, id: entry.id } : entryData)
+          .select();
+        
+        if (error) throw error;
+      }
+      
+      // Trigger refresh in parent
+      onUpdateEntries([]); 
+    } catch (e) {
+      console.error('Error saving entry:', e);
+      alert('Napaka pri shranjevanju!');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const dailyTotal = calculateDailyHours(currentShifts);
@@ -106,6 +131,7 @@ export const WorkTracker: React.FC<WorkTrackerProps> = ({ entries, onUpdateEntri
             <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
               <CalendarIcon className="w-5 h-5 text-blue-500" />
               {format(selectedDate, 'd. MMMM yyyy', { locale: sl })}
+              {isSaving && <span className="text-xs text-gray-400 font-normal animate-pulse">(Shranjevanje...)</span>}
             </h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               Skupaj: <span className="font-bold text-blue-600 dark:text-blue-400">{formatHours(dailyTotal)}h</span>

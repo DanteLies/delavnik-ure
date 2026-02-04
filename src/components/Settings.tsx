@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
-import { X, Download, Upload, Save, Settings as SettingsIcon } from 'lucide-react';
+import { X, Download, Upload, Save, Settings as SettingsIcon, Loader2 } from 'lucide-react';
 import type { DailyEntry } from '../types';
+import { supabase } from '../supabase';
 
 interface SettingsProps {
   isOpen: boolean;
@@ -10,6 +11,7 @@ interface SettingsProps {
   entries: DailyEntry[];
   onUpdateEntries: (entries: DailyEntry[]) => void;
   username: string;
+  userId: string;
 }
 
 export const Settings: React.FC<SettingsProps> = ({
@@ -19,11 +21,13 @@ export const Settings: React.FC<SettingsProps> = ({
   setHourlyRate,
   entries,
   onUpdateEntries,
-  username
+  username,
+  userId
 }) => {
   const [tempRate, setTempRate] = useState(hourlyRate.toString());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
 
   if (!isOpen) return null;
 
@@ -66,36 +70,55 @@ export const Settings: React.FC<SettingsProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setIsImporting(true);
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const data = JSON.parse(event.target?.result as string);
         
         // Basic validation
         if (data.username && data.entries && Array.isArray(data.entries)) {
-          // If importing for a different user, warn? Or just import entries?
-          // Let's assume user wants to import entries regardless of username match, 
-          // but we should probably respect the structure.
-          
+          // Import hourly rate if present
           if (data.hourlyRate) {
             setHourlyRate(data.hourlyRate);
           }
           
-          onUpdateEntries(data.entries);
-          setMessage({ type: 'success', text: 'Podatki uspešno uvoženi!' });
+          // Prepare entries for Supabase upsert
+          const entriesToUpsert = data.entries.map((entry: DailyEntry) => ({
+            user_id: userId,
+            date: entry.date,
+            shifts: entry.shifts,
+            comment: entry.comment,
+            updated_at: new Date().toISOString()
+          }));
+
+          if (entriesToUpsert.length > 0) {
+            // Upsert to Supabase
+            // We rely on the unique constraint on (user_id, date) to handle duplicates/updates
+            const { error } = await supabase
+              .from('entries')
+              .upsert(entriesToUpsert, { onConflict: 'user_id, date' });
+
+            if (error) throw error;
+          }
+          
+          // Trigger refresh
+          onUpdateEntries([]);
+          setMessage({ type: 'success', text: 'Podatki uspešno uvoženi v bazo!' });
         } else {
           throw new Error('Neveljavna oblika datoteke');
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error(err);
-        setMessage({ type: 'error', text: 'Napaka pri uvozu datoteke.' });
+        setMessage({ type: 'error', text: 'Napaka pri uvozu: ' + (err.message || 'Neznana napaka') });
+      } finally {
+        setIsImporting(false);
+        // Reset input
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        setTimeout(() => setMessage(null), 3000);
       }
-      
-      // Reset input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-      setTimeout(() => setMessage(null), 3000);
     };
     reader.readAsText(file);
   };
@@ -155,7 +178,7 @@ export const Settings: React.FC<SettingsProps> = ({
               Upravljanje s podatki
             </h4>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-              Ker se podatki shranjujejo samo v brskalniku, jih lahko tukaj izvoziš in preneseš na drugo napravo (npr. telefon).
+              Uvoz in izvoz podatkov (JSON format). Pri uvozu se podatki shranijo v bazo.
             </p>
             
             <div className="grid grid-cols-2 gap-3">
@@ -169,10 +192,17 @@ export const Settings: React.FC<SettingsProps> = ({
 
               <button
                 onClick={handleImportClick}
-                className="flex flex-col items-center justify-center gap-2 p-4 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-2xl transition-all"
+                disabled={isImporting}
+                className="flex flex-col items-center justify-center gap-2 p-4 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-2xl transition-all disabled:opacity-50"
               >
-                <Upload className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Uvozi</span>
+                {isImporting ? (
+                  <Loader2 className="w-6 h-6 text-purple-600 animate-spin" />
+                ) : (
+                  <Upload className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+                )}
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {isImporting ? 'Uvažam...' : 'Uvozi'}
+                </span>
               </button>
               <input 
                 type="file" 

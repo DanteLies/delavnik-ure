@@ -3,8 +3,10 @@ import { Login } from './components/Login';
 import { WorkTracker } from './components/WorkTracker';
 import { MonthlySummary } from './components/MonthlySummary';
 import { Settings } from './components/Settings';
+import { AdminPanel } from './components/AdminPanel';
 import type { DailyEntry, User } from './types';
-import { Clock, LogOut, Sun, Moon, Settings as SettingsIcon } from 'lucide-react';
+import { Clock, LogOut, Sun, Moon, Settings as SettingsIcon, Loader2, Shield } from 'lucide-react';
+import { supabase } from './supabase';
 
 function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -12,6 +14,8 @@ function App() {
   const [isDark, setIsDark] = useState(false);
   const [hourlyRate, setHourlyRate] = useState(9);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // Load auth state and theme on mount
   useEffect(() => {
@@ -26,18 +30,51 @@ function App() {
     }
 
     // Auth
-    const savedUser = localStorage.getItem('currentUser');
-    if (savedUser) {
-      try {
-        const user = JSON.parse(savedUser);
-        setCurrentUser(user);
-        loadUserEntries(user.username);
-        loadUserPreferences(user.username);
-      } catch (e) {
-        console.error('Failed to parse user', e);
-      }
-    }
+    checkUser();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        // Fetch profile
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        const user: User = {
+            id: session.user.id,
+            email: session.user.email,
+            username: profile?.username || session.user.user_metadata?.username || 'Uporabnik',
+            hourly_rate: profile?.hourly_rate || 9,
+            is_admin: profile?.is_admin || false
+          };
+
+          setCurrentUser(user);
+          setHourlyRate(user.hourly_rate || 9);
+          loadUserEntries(user.id);
+        } else {
+          setCurrentUser(null);
+          setEntries([]);
+          setHourlyRate(9);
+        }
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
+
+  const checkUser = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setLoading(false);
+        return;
+      }
+    } catch (e) {
+      console.error('Error checking user session:', e);
+      setLoading(false);
+    }
+  };
 
   // Update theme class when state changes
   useEffect(() => {
@@ -50,61 +87,72 @@ function App() {
     }
   }, [isDark]);
 
-  const loadUserEntries = (username: string) => {
-    const savedEntries = localStorage.getItem(`workEntries_${username}`);
-    if (savedEntries) {
-      try {
-        setEntries(JSON.parse(savedEntries));
-      } catch (e) {
-        console.error('Failed to parse entries', e);
-        setEntries([]);
-      }
-    } else {
-      setEntries([]);
-    }
-  };
+  const loadUserEntries = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('entries')
+        .select('*')
+        .eq('user_id', userId)
+        .order('date', { ascending: true });
 
-  const loadUserPreferences = (username: string) => {
-    const savedRate = localStorage.getItem(`hourlyRate_${username}`);
-    if (savedRate) {
-      const rate = parseFloat(savedRate);
-      if (!isNaN(rate)) {
-        setHourlyRate(rate);
+      if (error) throw error;
+
+      if (data) {
+        setEntries(data);
       }
-    } else {
-      setHourlyRate(9); // Default
+    } catch (e) {
+      console.error('Error loading entries:', e);
     }
   };
 
   const handleLogin = (user: User) => {
-    setCurrentUser(user);
-    localStorage.setItem('currentUser', JSON.stringify(user));
-    loadUserEntries(user.username);
-    loadUserPreferences(user.username);
+    // This is now handled by onAuthStateChange
   };
 
-  const handleLogout = () => {
-    setCurrentUser(null);
-    setEntries([]);
-    setHourlyRate(9);
-    localStorage.removeItem('currentUser');
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
   };
 
-  const handleUpdateEntries = (newEntries: DailyEntry[]) => {
+  const handleUpdateEntries = async (newEntries: DailyEntry[]) => {
+    // Optimistic update
     setEntries(newEntries);
+    // Note: Actual DB update logic should be in WorkTracker or we need to pass specific change
+    // Since handleUpdateEntries usually receives the whole array in the old local storage version,
+    // we should adapt WorkTracker to call DB functions directly or handle sync here.
+    // For now, let's reload entries to be safe or just keep optimistic.
+    // Ideally WorkTracker calls specific add/remove/update functions.
+    // But to keep changes minimal, let's leave this empty and let WorkTracker handle DB calls.
+    // Wait, WorkTracker calls onUpdateEntries. We should probably just refresh data here.
     if (currentUser) {
-      localStorage.setItem(`workEntries_${currentUser.username}`, JSON.stringify(newEntries));
+      loadUserEntries(currentUser.id);
     }
   };
 
-  const handleHourlyRateChange = (rate: number) => {
+  const handleHourlyRateChange = async (rate: number) => {
     setHourlyRate(rate);
     if (currentUser) {
-      localStorage.setItem(`hourlyRate_${currentUser.username}`, rate.toString());
+      try {
+        const { error } = await supabase
+          .from('profiles')
+          .update({ hourly_rate: rate })
+          .eq('id', currentUser.id);
+
+        if (error) throw error;
+      } catch (e) {
+        console.error('Error updating hourly rate:', e);
+      }
     }
   };
 
   const toggleTheme = () => setIsDark(!isDark);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <Loader2 className="w-10 h-10 animate-spin text-blue-600" />
+      </div>
+    );
+  }
 
   if (!currentUser) {
     return <Login onLogin={handleLogin} isDark={isDark} toggleTheme={toggleTheme} />;
@@ -125,6 +173,16 @@ function App() {
           </div>
           
           <div className="flex items-center gap-2 sm:gap-4">
+            {currentUser.is_admin && (
+              <button
+                onClick={() => setIsAdminPanelOpen(true)}
+                className="p-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 text-purple-600 dark:text-purple-400 transition-colors"
+                title="Admin Panel"
+              >
+                <Shield className="w-5 h-5" />
+              </button>
+            )}
+
             <button
               onClick={() => setIsSettingsOpen(true)}
               className="p-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
@@ -153,7 +211,11 @@ function App() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-8 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-        <WorkTracker entries={entries} onUpdateEntries={handleUpdateEntries} />
+        <WorkTracker 
+          entries={entries} 
+          onUpdateEntries={handleUpdateEntries} 
+          currentUser={currentUser} // Pass currentUser to WorkTracker
+        />
         <MonthlySummary entries={entries} hourlyRate={hourlyRate} />
       </main>
 
@@ -165,6 +227,13 @@ function App() {
         entries={entries}
         onUpdateEntries={handleUpdateEntries}
         username={currentUser.username}
+        userId={currentUser.id}
+      />
+      
+      <AdminPanel
+        isOpen={isAdminPanelOpen}
+        onClose={() => setIsAdminPanelOpen(false)}
+        currentUser={currentUser}
       />
     </div>
   );
