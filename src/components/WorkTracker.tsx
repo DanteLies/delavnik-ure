@@ -83,6 +83,9 @@ export const WorkTracker: React.FC<WorkTrackerProps> = ({ entries, onUpdateEntri
             .delete()
             .eq('id', entry.id);
           if (error) throw error;
+
+          const updatedEntries = entries.filter(e => e.id !== entry.id);
+          onUpdateEntries(updatedEntries);
         }
       } else {
         // Upsert
@@ -90,20 +93,27 @@ export const WorkTracker: React.FC<WorkTrackerProps> = ({ entries, onUpdateEntri
           user_id: currentUser.id,
           date: selectedDateStr,
           shifts: shifts,
-          comment: entryComment,
-          updated_at: new Date().toISOString()
+          comment: entryComment
         };
 
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('entries')
           .upsert(entry?.id ? { ...entryData, id: entry.id } : entryData)
-          .select();
-        
+          .select()
+          .single();
+
         if (error) throw error;
+
+        if (data) {
+          let updatedEntries;
+          if (entry) {
+            updatedEntries = entries.map(e => e.id === entry.id ? data : e);
+          } else {
+            updatedEntries = [...entries, data];
+          }
+          onUpdateEntries(updatedEntries);
+        }
       }
-      
-      // Trigger refresh in parent
-      onUpdateEntries([]); 
     } catch (e) {
       console.error('Error saving entry:', e);
       alert('Napaka pri shranjevanju!');
